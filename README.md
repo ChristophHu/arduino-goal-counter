@@ -51,3 +51,77 @@ Mit der Arduino IDE oder PlatformIO kannst du das ESP32-C6 programmieren. Es gib
 - OLED statt E-Ink (wenn’s schneller sein soll)
 - Soundeffekte oder LED bei Tor
 - Webinterface für Reset
+
+
+## Ein Sensor
+Anschluß der beiden TCRT5000 an den Adafruit Feather m0 Bluefruit
+```cpp
+#define TOR_SENSOR_PIN 5  // oder 6 für zweiten Sensor
+
+int tore = 0;
+bool vorherigerStatus = false;
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(TOR_SENSOR_PIN, INPUT);
+}
+
+void loop() {
+  bool ballErkannt = digitalRead(TOR_SENSOR_PIN) == LOW;
+
+  if (ballErkannt && !vorherigerStatus) {
+    tore++;
+    Serial.print("Tor erkannt! Tore: ");
+    Serial.println(tore);
+    delay(300);  // Entprellung
+  }
+
+  vorherigerStatus = ballErkannt;
+}
+```
+
+| Modul	| TCRT5000 #1	| TCRT5000 #2 |
+|---|---|---|
+| VCC	| 3.3 V oder 5 V | 3.3 V oder 5 V |
+| GND	| GND	| GND |
+| DO | D5 (Pin 5) | D6 (Pin 6) |
+
+Spannungsteiler	ja (falls 5 V-Modul)	ja (falls 5 V-Modul)
+
+## Zwei Sensoren
+```cpp
+#define TOR_SENSOR_A_PIN 5  // erster Sensor
+#define TOR_SENSOR_B_PIN 6  // zweiter Sensor
+
+int toreA = 0;
+int toreB = 0;
+bool statusA = false;
+bool statusB = false;
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(TOR_SENSOR_A_PIN, INPUT);
+  pinMode(TOR_SENSOR_B_PIN, INPUT);
+}
+
+void loop() {
+  bool erkanntA = digitalRead(TOR_SENSOR_A_PIN) == LOW;
+  bool erkanntB = digitalRead(TOR_SENSOR_B_PIN) == LOW;
+
+  if (erkanntA && !statusA) {
+    toreA++;
+    Serial.print("Tor erkannt! Tore: ");
+    Serial.println(toreA);
+    delay(300);  // Entprellung
+  }
+   if (erkanntB && !statusB) {
+    toreB++;
+    Serial.print("Gegentor erkannt! Tore: ");
+    Serial.println(toreB);
+    delay(300);  // Entprellung
+  }
+
+  statusA = erkanntA;
+  statusB = erkanntB;
+}
+```
