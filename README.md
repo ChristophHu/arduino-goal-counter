@@ -125,3 +125,77 @@ void loop() {
   statusB = erkanntB;
 }
 ```
+
+## Mit Waveshare 1.54" ePaper
+```cpp
+#include <GxEPD2_BW.h>
+#include <Adafruit_GFX.h>
+#include <Fonts/FreeMonoBold24pt7b.h>
+
+// Definition für dein 1.54" Display (200x200)
+#define EPD_CS     10
+#define EPD_DC     9
+#define EPD_RST    12
+#define EPD_BUSY   13
+
+GxEPD2_BW<GxEPD2_154, GxEPD2_154::HEIGHT> display(GxEPD2_154(EPD_CS, EPD_DC, EPD_RST, EPD_BUSY));
+
+#define TOR_SENSOR_A_PIN 5  // erster Sensor
+#define TOR_SENSOR_B_PIN 6  // zweiter Sensor
+
+int toreA = 0;
+int toreB = 0;
+bool statusA = false;
+bool statusB = false;
+
+void setup() {
+  Serial.begin(115200);
+
+  display.init();
+  display.setRotation(1);
+  display.setTextColor(GxEPD_BLACK);
+  updateDisplay();
+  
+  pinMode(TOR_SENSOR_A_PIN, INPUT);
+  pinMode(TOR_SENSOR_B_PIN, INPUT);
+}
+
+void loop() {
+  bool erkanntA = digitalRead(TOR_SENSOR_A_PIN) == LOW;
+  bool erkanntB = digitalRead(TOR_SENSOR_B_PIN) == LOW;
+
+  if (erkanntA && !statusA) {
+    toreA++;
+    Serial.print("Tor erkannt! Tore: ");
+    Serial.println(toreA);
+    delay(300);  // Entprellung
+  }
+   if (erkanntB && !statusB) {
+    toreB++;
+    Serial.print("Gegentor erkannt! Tore: ");
+    Serial.println(toreB);
+    delay(300);  // Entprellung
+  }
+
+  statusA = erkanntA;
+  statusB = erkanntB;
+
+  delay(10000);
+  updateDisplay();
+}
+
+void updateDisplay() {
+  display.setFullWindow();
+  display.firstPage();
+  do {
+    display.fillScreen(GxEPD_WHITE);
+    display.setFont(&FreeMonoBold24pt7b);
+    display.setCursor(0, 70);
+    display.print("A: ");
+    display.print(toreA);
+    display.setCursor(0, 150);
+    display.print("B: ");
+    display.print(toreB);
+  } while (display.nextPage());
+}
+```
