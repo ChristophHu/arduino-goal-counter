@@ -127,6 +127,19 @@ void loop() {
 ```
 
 ## Mit Waveshare 1.54" ePaper
+
+| Display-Pin | Feather M0 Bluefruit | Beschreibung |
+|---|---|---|
+| VCC | 3V | 3.3 V Versorgung |
+| GND | GND | Masse |
+| DIN | MOSI (Pin 23 / D11) | SPI-Datenleitung |
+| CLK | SCK (Pin 24 / D13) | SPI-Takt |
+| CS | D10 | Chip Select |
+| DC | D9 | Data/Command Control |
+| RST | D12 | Reset |
+| BUSY | D13 | Busy-Status (High = beschäftigt) |
+
+
 ```cpp
 #include <GxEPD2_BW.h>
 #include <Adafruit_GFX.h>
