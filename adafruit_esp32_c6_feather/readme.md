@@ -594,9 +594,35 @@ void handleRoot() {
 ```
 
 #### Webseiten extrahieren
+##### SPIFFS
 Um die HTML-Seite in eine separate Datei auszulagern, können Sie die `ESPAsyncWebServer`-Bibliothek verwenden, die es ermöglicht, HTML-Dateien aus dem Dateisystem (SPIFFS oder LittleFS) zu laden. Hier ist ein Beispiel, wie Sie eine HTML-Datei namens `index.html` laden können:
 
 https://github.com/me-no-dev/arduino-esp32fs-plugin?tab=readme-ov-file
 
 Nach dem Neustart von Arduino kann unter `Sketch > Sketch Ordner anzeigen` ein Ordner `data` erstellt werden. In diesem Ordner kann die Datei `index.html` abgelegt werden.
 
+##### LittleFS
+
+https://github.com/lorol/arduino-esp32littlefs-plugin?tab=readme-ov-file
+
+```cpp
+#include <LittleFS.h>
+...
+server.on("/testFS", []() {
+  File file = LittleFS.open("/index.html", "r");
+  if (!file) {
+    server.send(500, "text/plain", "Fehler: /index.html nicht gefunden");
+    return;
+  }
+  server.streamFile(file, "text/html");
+  file.close();
+});
+
+void setup() {
+  if (!LittleFS.begin(true)) {
+    Serial.println("❌ Fehler beim Mounten von LittleFS");
+    return;
+  }
+  Serial.println("📂 LittleFS bereit");
+}
+```
