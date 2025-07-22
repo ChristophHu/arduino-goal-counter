@@ -152,6 +152,9 @@ void loop() {
 }
 ```
 
+### WLAN Konfiguration mit Webserver
+This example demonstrates how to set up a web server on the ESP32-C6 to allow users to configure Wi-Fi settings through a web interface. The ESP32-C6 will create an access point if no Wi-Fi credentials are saved, allowing users to enter their SSID and password.
+
 ```cpp
 #include <WiFi.h>
 #include <WebServer.h>
@@ -240,13 +243,6 @@ bool connectToWiFi() {
 void setup() {
   Serial.begin(115200);
 
-  // clear wifi
-  preferences.begin("wifi", false);
-  preferences.clear();  // alles unter "wifi" löschen
-  preferences.end();
-  Serial.println("✅ WLAN-Daten geloescht");
-
-  // set AP
   if (!connectToWiFi()) {
     Serial.println("⚙️ Starte Konfigurationsmodus...");
     startAPMode();
@@ -272,3 +268,335 @@ void loop() {
   server.handleClient();
 }
 ```
+
+To reset the Wi-Fi configuration, you can access the following URL in your web browser:
+```text
+http://<IP_des_ESP32>/reset
+```
+
+### Features
+
+#### IP-Adresse des AP vorgeben
+Vor dem Start des Access Points kann die IP-Adresse des ESP32-C6 festgelegt werden. Dies ist nützlich, um eine konsistente IP-Adresse für den Konfigurationszugriff zu haben.
+```cpp
+void startAPMode() {
+  IPAddress localIP(192, 168, 1, 1);        // Wunsch-IP des AP
+  IPAddress gateway(192, 168, 1, 1);        // gleich wie localIP
+  IPAddress subnet(255, 255, 255, 0);       // Standard-Subnetz
+
+  WiFi.softAPConfig(localIP, gateway, subnet);  // IP konfigurieren
+
+  WiFi.softAP("ESP32_Config", "12345678");
+  ...
+}
+```
+
+#### DNS zur Weiterleitung auf Webserver
+Um sicherzustellen, dass alle DNS-Anfragen an den Webserver des ESP32-C6 weitergeleitet werden, kann der DNS-Server des Access Points so konfiguriert werden, dass er alle Anfragen an die IP-Adresse des ESP32-C6 umleitet. Dies ermöglicht es, dass Benutzer einfach die IP-Adresse des Access Points in ihrem Browser eingeben können, ohne eine spezifische URL angeben zu müssen.
+
+```cpp
+#include <DNSServer.h>
+
+const byte DNS_PORT = 53;
+DNSServer dnsServer;
+
+void startAPMode() {
+  IPAddress localIP(192, 168, 1, 1);        // Wunsch-IP des AP
+  IPAddress gateway(192, 168, 1, 1);        // gleich wie localIP
+  IPAddress subnet(255, 255, 255, 0);       // Standard-Subnetz
+
+  WiFi.softAPConfig(localIP, gateway, subnet);  // IP konfigurieren
+
+  // DNS-Server
+  dnsServer.start(DNS_PORT, "*", localIP);  // <- DNS fängt alle Domains ab
+
+  WiFi.softAP("ESP32_Config", "12345678");
+  ...
+}
+
+void loop() {
+  dnsServer.processNextRequest();  // <- DNS Anfragen beantworten
+  server.handleClient();           // Webserver bedienen
+}
+```
+
+#### Captive Portale
+Ein Captive Portal ist eine Webanwendung, die automatisch geöffnet wird, wenn ein Benutzer eine Verbindung zu einem Wi-Fi-Netzwerk herstellt. Es ermöglicht die einfache Konfiguration von Netzwerkeinstellungen und bietet eine benutzerfreundliche Oberfläche für die Eingabe von SSID und Passwort.
+
+```cpp
+server.on("/generate_204", []() {
+  server.sendHeader("Location", "/", true);
+  server.send(302, "text/plain", "");
+});
+
+server.on("/hotspot-detect.html", []() {
+  server.sendHeader("Location", "/", true);
+  server.send(302, "text/plain", "");
+});
+
+server.onNotFound([]() {
+  server.send(200, "text/html", getRootPage());
+});
+```
+
+#### SSID speichern und verfügbare WLANs anzeigen
+Um die SSID des Netzwerks zu speichern und verfügbare WLANs anzuzeigen, können Sie die `WiFi.scanNetworks()`-Funktion verwenden, um eine Liste der verfügbaren Netzwerke zu erhalten. Diese Liste kann dann in der Weboberfläche angezeigt werden, sodass Benutzer ein Netzwerk auswählen und die SSID speichern können.
+
+```cpp
+void handleRoot() {
+  // Vorhandene gespeicherte SSID laden
+  preferences.begin("wifi", true);
+  String savedSSID = preferences.getString("ssid", "");
+  preferences.end();
+
+  // WLAN-Netzwerke scannen
+  int n = WiFi.scanNetworks();
+
+  // Beginne HTML-Seite
+  String page = R"rawliteral(
+  <!DOCTYPE html>
+  <html>
+  <head>
+    <meta charset="UTF-8">
+    <title>ESP32 WLAN Konfiguration</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background: #f2f2f2;
+        color: #333;
+        padding: 0;
+        margin: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+      }
+      .card {
+        background: #fff;
+        padding: 2rem;
+        border-radius: 1rem;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        max-width: 400px;
+        width: 90%;
+      }
+      h1 {
+        font-size: 1.5rem;
+        margin-bottom: 1rem;
+        text-align: center;
+        color: #222;
+      }
+      label {
+        display: block;
+        margin-top: 1rem;
+        font-weight: bold;
+      }
+      select, input {
+        width: 100%;
+        padding: 0.5rem;
+        margin-top: 0.25rem;
+        border: 1px solid #ccc;
+        border-radius: 0.5rem;
+        font-size: 1rem;
+      }
+      button {
+        width: 100%;
+        padding: 0.75rem;
+        margin-top: 1.5rem;
+        background: #007bff;
+        color: white;
+        border: none;
+        border-radius: 0.5rem;
+        font-size: 1rem;
+        cursor: pointer;
+        transition: background 0.3s;
+      }
+      button:hover {
+        background: #0056b3;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>WLAN konfigurieren</h1>
+      <form action="/save" method="get">
+        <label for="ssid">SSID</label>
+        <select name="ssid" id="ssid" required>
+  )rawliteral";
+
+  // WLAN-Netzwerke hinzufügen
+  for (int i = 0; i < n; ++i) {
+    String ssid = WiFi.SSID(i);
+    bool selected = (ssid == savedSSID);
+    page += "<option value='" + ssid + "'";
+    if (selected) page += " selected";
+    page += ">" + ssid + "</option>";
+  }
+
+  // Eingabe für Passwort und Submit-Button
+  page += R"rawliteral(
+        </select>
+
+        <label for="pass">Passwort</label>
+        <input type="password" id="pass" name="pass" required>
+
+        <button type="submit">Speichern &amp; Verbinden</button>
+      </form>
+    </div>
+  </body>
+  </html>
+  )rawliteral";
+
+  server.send(200, "text/html", page);
+}
+```
+
+#### Implementierung des WLAN Scan per AJAX
+Um die WLAN-Netzwerke asynchron zu laden, können Sie AJAX verwenden. Dies ermöglicht es, die Netzwerkliste zu aktualisieren, ohne die gesamte Seite neu zu laden.
+
+```cpp
+server.on("/wifis", []() {
+  int n = WiFi.scanNetworks();
+  String json = "[";
+  for (int i = 0; i < n; ++i) {
+    if (i > 0) json += ",";
+    json += "\"" + WiFi.SSID(i) + "\"";
+  }
+  json += "]";
+  server.send(200, "application/json", json);
+});
+```
+
+```cpp
+void handleRoot() {
+  preferences.begin("wifi", true);
+  String savedSSID = preferences.getString("ssid", "");
+  preferences.end();
+
+  String page = R"rawliteral(
+  <!DOCTYPE html>
+  <html>
+  <head>
+    <meta charset="UTF-8">
+    <title>ESP32 WLAN Konfiguration</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background: #f2f2f2;
+        color: #333;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+      }
+      .card {
+        background: #fff;
+        padding: 2rem;
+        border-radius: 1rem;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        max-width: 400px;
+        width: 90%;
+      }
+      h1 {
+        font-size: 1.5rem;
+        text-align: center;
+        color: #222;
+        margin-bottom: 1rem;
+      }
+      label {
+        display: block;
+        margin-top: 1rem;
+        font-weight: bold;
+      }
+      select, input {
+        width: 100%;
+        padding: 0.5rem;
+        margin-top: 0.25rem;
+        border: 1px solid #ccc;
+        border-radius: 0.5rem;
+        font-size: 1rem;
+      }
+      button {
+        width: 100%;
+        padding: 0.75rem;
+        margin-top: 1.5rem;
+        background: #007bff;
+        color: white;
+        border: none;
+        border-radius: 0.5rem;
+        font-size: 1rem;
+        cursor: pointer;
+        transition: background 0.3s;
+      }
+      button:hover {
+        background: #0056b3;
+      }
+      .loading {
+        font-style: italic;
+        color: #888;
+        margin-top: 0.5rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>WLAN konfigurieren</h1>
+      <form action="/save" method="get">
+        <label for="ssid">SSID</label>
+        <select id="ssid" name="ssid" required>
+          <option disabled selected>Netzwerke werden geladen...</option>
+        </select>
+        <div class="loading" id="status"></div>
+
+        <label for="pass">Passwort</label>
+        <input type="password" id="pass" name="pass" required>
+
+        <button type="submit">Speichern &amp; Verbinden</button>
+      </form>
+    </div>
+
+    <script>
+      const savedSSID = ")rawliteral";
+
+  page += savedSSID;  // gespeicherte SSID einfügen
+
+  page += R"rawliteral(";
+
+      fetch("/wifis")
+        .then(response => response.json())
+        .then(data => {
+          const ssidSelect = document.getElementById("ssid");
+          ssidSelect.innerHTML = "";
+          data.forEach(ssid => {
+            const option = document.createElement("option");
+            option.value = ssid;
+            option.textContent = ssid;
+            if (ssid === savedSSID) {
+              option.selected = true;
+            }
+            ssidSelect.appendChild(option);
+          });
+          document.getElementById("status").textContent = "✅ Netzwerke geladen";
+        })
+        .catch(() => {
+          document.getElementById("status").textContent = "⚠️ Fehler beim Laden der Netzwerke";
+        });
+    </script>
+  </body>
+  </html>
+  )rawliteral";
+
+  server.send(200, "text/html", page);
+}
+```
+
+#### Webseiten extrahieren
+Um die HTML-Seite in eine separate Datei auszulagern, können Sie die `ESPAsyncWebServer`-Bibliothek verwenden, die es ermöglicht, HTML-Dateien aus dem Dateisystem (SPIFFS oder LittleFS) zu laden. Hier ist ein Beispiel, wie Sie eine HTML-Datei namens `index.html` laden können:
+
+https://github.com/me-no-dev/arduino-esp32fs-plugin?tab=readme-ov-file
+
+Nach dem Neustart von Arduino kann unter `Sketch > Sketch Ordner anzeigen` ein Ordner `data` erstellt werden. In diesem Ordner kann die Datei `index.html` abgelegt werden.
+
