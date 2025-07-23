@@ -150,6 +150,7 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
     async function resetScore() {
       await fetch("/goalreset");
       updateScore();
+      startGameClock();
     }
     async function reset() {
       await fetch("/reset");
