@@ -1,77 +1,53 @@
 #include <WiFi.h>
 #include <WebServer.h>
 #include <Preferences.h>
+#include <DNSServer.h>
+#include <time.h>
+
+#include "ap_html.h"
+#include "dashboard_html.h"
+
+const byte DNS_PORT = 53;
+DNSServer dnsServer;
 
 WebServer server(80);
 Preferences preferences;
 
-//const char* ssid = "nxt";
-//const char* password = "06215256444917228020";
-
 String ssid, password;
 
+// pins
 #define TOR_SENSOR_PIN_A 5  // erster Sensor
 #define TOR_SENSOR_PIN_B 6  // zweiter Sensor
 
+// counter
 int toreA = 0;
 int toreB = 0;
 bool stateA = false;
 bool stateB = false;
 
-// HTML-Seite mit IP-Anzeige
-String getDashboardPage() {
-  IPAddress ip = WiFi.localIP();
-  String html = "<!DOCTYPE html><html><head><meta charset='utf-8'>"
-                "<title>ESP32-C6 Dashboard</title></head><body>"
-                "<h1>🌐 ESP32-C6 Dashboard</h1>"
-                "<p><strong>IP-Adresse:</strong> " + ip.toString() + "</p>"
-                "</body></html>";
-  return html;
-}
-
-const char* htmlPage = R"rawliteral(
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Torzähler</title>
-  <style>
-    body { font-family: sans-serif; text-align: center; margin-top: 50px; }
-    #counter { font-size: 48px; color: darkgreen; }
-  </style>
-</head>
-<body>
-  <h1>Torzähler</h1>
-  <div>Aktuelle Tore:</div>
-  <div id="counter">0</div>
-  
-  <button onclick="resetScore()">Zurücksetzen</button>
-  <script>
-    async function updateScore() {
-      const res = await fetch("/status");
-      const data = await res.json();
-      document.getElementById("counter").textContent = data.scoreA + ":" + data.scoreB;
-    }
-    async function resetScore() {
-      await fetch("/goalreset");
-      updateScore();
-    }
-    setInterval(updateScore, 5000);
-    updateScore();
-  </script>
-</body>
-</html>
-)rawliteral";
+// playtime
+unsigned long starttimeMillis = 0;
+#define MY_TZ "CET-1CEST,M3.5.0,M10.5.0/3"
 
 // WiFi-Konfigurationsseite (nur wenn keine Daten vorhanden)
 void handleRoot() {
-  String page = "<h1>WiFi Konfiguration</h1>"
-                "<form action='/save'>"
-                "SSID: <input name='ssid'><br>"
-                "Passwort: <input name='pass'><br><br>"
-                "<input type='submit' value='Speichern'>"
-                "</form>";
-  server.send(200, "text/html", page);
+  preferences.begin("wifi", true);
+  String savedSSID = preferences.getString("ssid", "");
+  preferences.end();
+
+  IPAddress IP = WiFi.softAPIP();
+  String ip = IP.toString();
+  String mac = WiFi.softAPmacAddress();
+
+  String ap_html;
+  ap_html += AP_HTML_HEAD;
+  ap_html += savedSSID;
+  ap_html += AP_HTML_SCRIPT;
+  
+  ap_html.replace("{{IP}}", ip);  // falls du ein Platzhalter-Template nutzt
+  ap_html.replace("{{MAC}}", mac);  // falls du ein Platzhalter-Template nutzt
+
+  server.send(200, "text/html", ap_html);
 }
 
 // Speichert SSID/PW und startet ESP neu
@@ -91,15 +67,41 @@ void handleSave() {
 }
 
 void startAPMode() {
+  // ip-configuration
+  IPAddress localIP(192, 168, 4, 1);
+  IPAddress gateway(192, 168, 4, 1);
+  IPAddress subnet(255, 255, 255, 0);
+  WiFi.softAPConfig(localIP, gateway, subnet);
+  String mac = WiFi.macAddress();
+  
+  // DNS-Server
+  dnsServer.start(DNS_PORT, "*", localIP);  // <- DNS fängt alle Domains ab
+  
+  // ap-mode
+  Serial.println("🌐 Starte Access Point...");
   WiFi.softAP("ESP32_Config", "12345678");
   IPAddress IP = WiFi.softAPIP();
   Serial.print("AP IP-Adresse: ");
   Serial.println(IP);
 
+  // handle routes
   server.on("/", handleRoot);
-  server.on("/save", handleSave);
+  
   server.begin();
   Serial.println("🛜 Access Point läuft");
+
+  server.on("/save", handleSave);
+  server.on("/generate_204", []() {
+    server.sendHeader("Location", "/", true);
+    server.send(302, "text/plain", "");
+  });
+  server.on("/hotspot-detect.html", []() {
+    server.sendHeader("Location", "/", true);
+    server.send(302, "text/plain", "");
+  });
+  server.onNotFound([]() {
+    server.send(404, "text/html", "<h1>Seite konnte nicht gefunden werden...</h1>");
+  });
 }
 
 bool connectToWiFi() {
@@ -129,42 +131,50 @@ bool connectToWiFi() {
 
 void setup() {
   Serial.begin(115200);
+  starttimeMillis = millis();
 
   if (!connectToWiFi()) {
     Serial.println("⚙️ Starte Konfigurationsmodus...");
     startAPMode();
   } else {
+    // get time
+    setupTime();
+    //server.on("/", []() {
+    //  server.send(200, "text/html", getDashboardPage());
+    //});
     server.on("/", []() {
-      server.send(200, "text/html", getDashboardPage());
+      String dashboard_html = DASHBOARD_HTML;
+      server.send(200, "text/html", dashboard_html);
     });
     server.begin();
     Serial.println("🚀 Webserver läuft");
   }
 
-  // Sensor vorbereiten
-  //pinMode(SENSOR_PIN, INPUT_PULLUP);
-  pinMode(TOR_SENSOR_PIN_A, INPUT);
-  pinMode(TOR_SENSOR_PIN_B, INPUT);
-
-  // Webseite ausliefern
-  server.on("/", []() {
-    server.send(200, "text/html", htmlPage);
-  });
-
   // Zähler-API
   server.on("/status", []() {
-    String json = "{\"scoreA\":" + String(toreA) + ", \"scoreB\":" + String(toreB) + "}";
+    String json = "{\"scoreA\":" + String(toreA) + 
+                  ", \"scoreB\":" + String(toreB) + "}";
     server.send(200, "application/json", json);
+  });
+  server.on("/starttime", []() {
+    String datetime = getDateTime();
+    String json = "{\"starttime\":" + String(datetime) + "}";
+    server.send(200, "application/json", json);
+  });
+  server.on("/unixtime", []() {
+    time_t now;
+    time(&now);
+    server.send(200, "text/plain", String(now));
   });
 
   // goalreset
   server.on("/goalreset", []() {
     toreA = 0;
     toreB = 0;
+    starttimeMillis = millis();
     server.send(200, "application/json", "{\"goalreset\":true}");
   });
-
-  // wifireset
+  
   server.on("/reset", []() {
     preferences.begin("wifi", false);
     preferences.clear();   // alle Werte löschen
@@ -174,11 +184,21 @@ void setup() {
     ESP.restart();
   });
 
-  //server.begin();
+  server.on("/wifis", []() {
+    int n = WiFi.scanNetworks();
+    String json = "[";
+    for (int i = 0; i < n; ++i) {
+      if (i > 0) json += ",";
+      json += "\"" + WiFi.SSID(i) + "\"";
+    }
+    json += "]";
+    server.send(200, "application/json", json);
+  });
 }
 
 void loop() {
-  server.handleClient(); // wichtig für WebServer
+  dnsServer.processNextRequest();
+  server.handleClient();
 
   bool erkanntA = digitalRead(TOR_SENSOR_PIN_A) == LOW;
   bool erkanntB = digitalRead(TOR_SENSOR_PIN_B) == LOW;
@@ -198,5 +218,17 @@ void loop() {
 
   stateA = erkanntA;
   stateB = erkanntB;
-  
+}
+
+void setupTime() {
+  configTzTime(MY_TZ, "pool.ntp.org", "time.nist.gov");
+}
+
+String getDateTime() {
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) return "NTP-Fehler";
+
+  char buffer[32];
+  strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", &timeinfo);
+  return String(buffer);
 }
