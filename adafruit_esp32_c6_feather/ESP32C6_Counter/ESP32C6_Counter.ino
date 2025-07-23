@@ -143,7 +143,12 @@ void setup() {
     //  server.send(200, "text/html", getDashboardPage());
     //});
     server.on("/", []() {
+      IPAddress IP = WiFi.softAPIP();
+      String ip = IP.toString();
+      String mac = WiFi.softAPmacAddress();
       String dashboard_html = DASHBOARD_HTML;
+      dashboard_html.replace("{{IP}}", ip);
+      dashboard_html.replace("{{MAC}}", mac);
       server.send(200, "text/html", dashboard_html);
     });
     server.begin();

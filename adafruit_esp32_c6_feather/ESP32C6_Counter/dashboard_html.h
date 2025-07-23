@@ -5,7 +5,8 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Kicker COunter</title>
+  <title>Kicker Counter</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
     * {
         -webkit-user-select: none
