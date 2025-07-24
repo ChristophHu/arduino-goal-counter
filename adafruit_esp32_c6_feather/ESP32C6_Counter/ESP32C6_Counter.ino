@@ -6,12 +6,16 @@
 
 #include "ap_html.h"
 #include "dashboard_html.h"
+#include "style_css.h"
 
 const byte DNS_PORT = 53;
 DNSServer dnsServer;
 
 WebServer server(80);
 Preferences preferences;
+
+// Mit deutscher Zeitzone (automatisch Sommerzeit):
+#define MY_TZ "CET-1CEST,M3.5.0,M10.5.0/3"
 
 String ssid, password;
 
@@ -24,10 +28,6 @@ int toreA = 0;
 int toreB = 0;
 bool stateA = false;
 bool stateB = false;
-
-// playtime
-unsigned long starttimeMillis = 0;
-#define MY_TZ "CET-1CEST,M3.5.0,M10.5.0/3"
 
 // WiFi-Konfigurationsseite (nur wenn keine Daten vorhanden)
 void handleRoot() {
@@ -131,17 +131,13 @@ bool connectToWiFi() {
 
 void setup() {
   Serial.begin(115200);
-  starttimeMillis = millis();
-
+  
   if (!connectToWiFi()) {
     Serial.println("⚙️ Starte Konfigurationsmodus...");
     startAPMode();
   } else {
-    // get time
     setupTime();
-    //server.on("/", []() {
-    //  server.send(200, "text/html", getDashboardPage());
-    //});
+
     server.on("/", []() {
       IPAddress IP = WiFi.softAPIP();
       String ip = IP.toString();
@@ -161,25 +157,28 @@ void setup() {
                   ", \"scoreB\":" + String(toreB) + "}";
     server.send(200, "application/json", json);
   });
-  server.on("/starttime", []() {
-    String datetime = getDateTime();
-    String json = "{\"starttime\":" + String(datetime) + "}";
-    server.send(200, "application/json", json);
-  });
-  server.on("/unixtime", []() {
-    time_t now;
-    time(&now);
-    server.send(200, "text/plain", String(now));
-  });
-
-  // goalreset
-  server.on("/goalreset", []() {
-    toreA = 0;
-    toreB = 0;
-    starttimeMillis = millis();
-    server.send(200, "application/json", "{\"goalreset\":true}");
+  server.on("/gamestart", []() {
+    preferences.begin("game", true);
+    unsigned long start = preferences.getULong("startEpoch", 0);
+    preferences.end();
+    server.send(200, "text/plain", String(start));
   });
   
+  // reset goals and time
+  server.on("/gamereset", []() {
+    time_t now;
+    time(&now);
+
+    preferences.begin("game", false);
+    preferences.putULong("startEpoch", (unsigned long)now);
+    preferences.end();
+    
+    toreA = 0;
+    toreB = 0;
+
+    server.send(200, "text/plain", "Game started");
+  });
+  // reset wifi
   server.on("/reset", []() {
     preferences.begin("wifi", false);
     preferences.clear();   // alle Werte löschen
@@ -198,6 +197,9 @@ void setup() {
     }
     json += "]";
     server.send(200, "application/json", json);
+  });
+  server.on("/style.css", []() {
+    server.send_P(200, "text/css", STYLE_CSS);
   });
 }
 
@@ -225,15 +227,37 @@ void loop() {
   stateB = erkanntB;
 }
 
+//void setGameStart() {
+//  time_t now;
+//  time(&now);
+//
+//  preferences.begin("game", false);
+//  preferences.putULong("startEpoch", (unsigned long)now);
+//  preferences.end();
+//}
+
+//unsigned long getSavedGameStart() {
+//  preferences.begin("game", true);
+//  unsigned long start = preferences.getULong("startEpoch", 0);
+//  preferences.end();
+//  return start;
+//}
+
 void setupTime() {
   configTzTime(MY_TZ, "pool.ntp.org", "time.nist.gov");
-}
 
-String getDateTime() {
   struct tm timeinfo;
-  if (!getLocalTime(&timeinfo)) return "NTP-Fehler";
+  int retries = 0;
+  while (!getLocalTime(&timeinfo) && retries < 20) {
+    Serial.println("⏳ Warte auf Zeit...");
+    delay(500);
+    retries++;
+  }
 
-  char buffer[32];
-  strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", &timeinfo);
-  return String(buffer);
+  if (retries >= 20) {
+    Serial.println("❌ Keine NTP-Zeit verfügbar!");
+  } else {
+    Serial.print("✅ Zeit gesetzt: ");
+    Serial.println(&timeinfo, "%Y-%m-%d %H:%M:%S");
+  }
 }

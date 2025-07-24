@@ -6,7 +6,7 @@ const char AP_HTML_HEAD[] PROGMEM = R"rawliteral(
 <head>
   <meta charset="UTF-8">
   <title>ESP32 WLAN Konfiguration</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
     * {
         -webkit-user-select: none
