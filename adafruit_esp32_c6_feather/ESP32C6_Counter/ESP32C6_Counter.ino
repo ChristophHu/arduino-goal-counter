@@ -7,6 +7,7 @@
 #include "ap_html.h"
 #include "dashboard_html.h"
 #include "style_css.h"
+#include "counter_js.h"
 
 const byte DNS_PORT = 53;
 DNSServer dnsServer;
