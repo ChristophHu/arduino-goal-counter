@@ -1,12 +1,27 @@
 # arduino-goal-counter
 
-## Komponenten
+## Idee
+Die Idee hinter dem Arduino Goal Counter ist es, ein einfaches und effektives System zur Zählung von Toren an einem Tischkicker zu entwickeln. Durch den Einsatz von Lichtschranken und einem Mikrocontroller (ESP32-C6) soll das System in der Lage sein, Tore automatisch zu erkennen und den Spielstand anzuzeigen.
 
-- Adafruit ESP32-C6: Mikrocontroller mit Wi-Fi, BLE, Zigbee/Thread (sehr vielseitig!)
-- Lichtschranke (z. B. Reflexions- oder Gabellichtschranke): Zur Erkennung, wenn ein Ball durch das Tor geht.
-- Waveshare E-Ink Display (z. B. 2.9" oder 4.2" SPI): Für die Anzeige des Spielstands.
-- Stromversorgung (Powerbank, Netzteil oder Akku)
-- Optional: Taster zum Zurücksetzen des Spielstands
+## Anforderungen
+- Es sollten Tore automatisch bei der Heim- und der Gast-Manschaft erkannt werden.
+- Der aktuelle Spielstand soll im Browser angezeigt werden.
+- Es soll möglich sein, den Spielstand zurückzusetzen.
+
+## Benötigte Hardware
+- **Microcontroller - Adafruit ESP32-C6**: Ein Mikrocontroller mit Wi-Fi, BLE und Zigbee/Thread, der vielseitig einsetzbar ist.
+- **Lichtschranke - TCRM5000**: Zum Beispiel zwei Reflexions- oder Gabellichtschranken.
+- **E-Ink Display - Waveshare 1.54"**: Ein E-Ink Display zur Anzeige des Spielstands.
+- **Taster**: (optional) Zum Zurücksetzen des Spielstands.
+- **Stromversorgung**: USB oder Batterie (z. B. 18650 Li-Ion Akku).
+- **Kabel und Steckbrett**: Für die Verkabelung der Komponenten.
+- **Widerstände**: Falls nötig, z. B. für Pull-Up/Pull-Down bei den Lichtschranken.
+- **Optional**: Gehäuse für die Elektronik.
+
+## Software
+- **Arduino IDE**: Zur Programmierung des ESP32-C6.
+- **Bibliotheken**: Für E-Ink Displays (z. B. GxEPD2) und Lichtschranken.
+- **Webserver**: Um den Spielstand im Browser anzuzeigen (z. B. mit ESPAsyncWebServer).
 
 ## Funktionsweise/Ablauf
 
@@ -18,18 +33,12 @@ Softwareseitig wird ein Zähler erhöht (ggf. mit Entprellung und Verzögerung g
 ### Spielstand verwalten
 Zähler für Team A und B (z. B. bei zwei Lichtschranken – für jedes Tor eine).
 
-### Anzeige auf E-Ink Display
-Der ESP32 sendet den aktuellen Spielstand über SPI an das Waveshare E-Ink Display.
-Aktualisierung z. B. alle paar Sekunden oder direkt nach einem Tor.
-
 ## Elektronik-Verkabelung (schematisch)
 
 | Komponente | ESP32-C6 Pin | Hinweis |
 |---|---|---|
 | Lichtschranke A |	GPIO (z. B. D2)	| Pulldown/Interrupt-fähig |
 | Lichtschranke B	| GPIO (z. B. D3)	| bei 2 Toren |
-| E-Ink (SPI-Modul)	| MOSI, CLK, CS, DC, RST, BUSY | Pinout abhängig vom Displaymodell |
-| Reset-Taster | GPIO (z. B. D4) | Spielstand zurücksetzen |
 
 ## Software (Arduino)
 
@@ -51,7 +60,6 @@ Mit der Arduino IDE oder PlatformIO kannst du das ESP32-C6 programmieren. Es gib
 - OLED statt E-Ink (wenn’s schneller sein soll)
 - Soundeffekte oder LED bei Tor
 - Webinterface für Reset
-
 
 ## Ein Sensor
 Anschluß der beiden TCRT5000 an den Adafruit Feather m0 Bluefruit
